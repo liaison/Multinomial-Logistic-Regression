@@ -258,6 +258,56 @@ def run_training(df_training, train_config, model_tuple=None):
     return (model_tuple, loss_list)
 
 
+def test_model(model, df_testing, train_config, features_to_skip = None):
+    '''
+        Test the model with the given data
+        train_config: some parameters are used, i.e. MNL_feature, gpu
+        features_to_skip:  a list of features to skip in the validation
+        return: the statistic results of testing
+    '''
+    df_session_groups = df_testing.groupby('session_id')
+
+    if (train_config['verbose']):
+        print('Num of testing sessions:', len(df_session_groups))
+
+    MNL_features = train_config['MNL_features']
+
+    # the testing data with the prediction value for each alternative
+    ret = []
+    
+    session_list = list(df_session_groups.groups.keys())
+    
+    # shuffle the sample list in each epoch
+    # Important for the "stochastic" probability of the gradient descent algorithm ?!
+    if (train_config.get('shuffle_batch', True)):
+        import random
+        random.shuffle(session_list)
+
+    for session_id in session_list:
+    
+        # create a copy of the testing data
+        df_session = df_session_groups.get_group(session_id).copy()
+    
+        if (features_to_skip == None):
+            testing_data = df_session[MNL_features]
+        else:
+            # Set the values of feature-to-skip to be zero, 
+            #   i.e. nullify the weights associated with the features to skip
+            testing_data = df_session[MNL_features].copy()
+            testing_data[features_to_skip] = 0
+        
+        # predict a single session
+        predY = model.predict(testing_data.values, binary=False)
+    
+        # add the prediction column
+        df_session['pred_value'] = predY
+        
+        ret.append(df_session)
+        
+    # concatenate the dataframes along the rows
+    return pd.concat(ret, axis=0)
+
+
 def plot_loss(loss_list):
     '''
         plot the loss evolution
