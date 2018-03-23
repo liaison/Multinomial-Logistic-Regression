@@ -91,6 +91,64 @@ class MNL(nn.Module):
         return l2_weight * (torch.sqrt(torch.pow(torch_params, 2).sum()))
 
 
+    def train(self, loss, optimizer, x_val, y_val,
+              l1_loss_weight = 0,  # when zero, no L1 regularization
+              l2_loss_weight = 0,
+              gpu=False):
+        """
+            Train the model with a batch (in our case, also a session) of data
+        """
+        # expect y_val to be of one_dimension
+        y_val = y_val.reshape(len(y_val), 1)
+
+        tensorX = torch.from_numpy(x_val).double()
+        tensorY = torch.from_numpy(y_val).double()
+
+        if (gpu):
+            dtype = torch.cuda.DoubleTensor
+        else:
+            dtype = torch.DoubleTensor
+
+        # input variable
+        x = Variable(tensorX.type(dtype), requires_grad=False)
+        # target variable
+        y = Variable(tensorY.type(dtype), requires_grad=False)
+
+        # Forward to calculate the losses
+        fx = self.forward(x)
+        data_loss = loss.forward(fx, y)
+
+        # optional: add L1 or L2 penalities for regularization
+        if (l1_loss_weight != 0):
+            l1_loss = self.l1_loss(l1_loss_weight)
+            output = data_loss + l1_loss
+
+        elif (l2_loss_weight != 0):
+            l2_loss = self.l2_loss(l2_loss_weight)
+            output = data_loss + l2_loss
+
+        else:
+            output = data_loss
+
+        if (isinstance(optimizer, torch.optim.LBFGS)):
+            def closure():
+                optimizer.zero_grad()
+                output.backward(retain_graph=True)
+                return output
+
+            optimizer.step(closure)
+        else:
+            # Reset gradient
+            optimizer.zero_grad()
+            # Backward
+            output.backward()
+            # Update parameters
+            optimizer.step()
+
+        # return the cost
+        return output.data[0]
+
+
     def predict(self, x_val, binary=False):
         '''
             Give prediction for alternatives within a single session
@@ -216,62 +274,6 @@ def build_model(input_dim):
     return model
 
 
-def train(model, loss, optimizer, x_val, y_val,
-          l1_loss_weight = 0,  # when zero, no L1 regularization
-          l2_loss_weight = 0,
-          gpu=False):
-    """
-        Train the model with a batch (in our case, also a session) of data
-    """
-    # expect y_val to be of one_dimension
-    y_val = y_val.reshape(len(y_val), 1)
-    
-    tensorX = torch.from_numpy(x_val).double()
-    tensorY = torch.from_numpy(y_val).double()
-    
-    if (gpu):
-        dtype = torch.cuda.DoubleTensor
-    else:
-        dtype = torch.DoubleTensor
-    
-    # input variable
-    x = Variable(tensorX.type(dtype), requires_grad=False)
-    # target variable
-    y = Variable(tensorY.type(dtype), requires_grad=False)
-
-    # Forward to calculate the losses
-    fx = model.forward(x)
-    data_loss = loss.forward(fx, y)
-    
-    # optional: add L1 or L2 penalities for regularization
-    if (l1_loss_weight != 0):
-        l1_loss = model.l1_loss(l1_loss_weight)
-        output = data_loss + l1_loss
-        
-    elif (l2_loss_weight != 0):
-        l2_loss = model.l2_loss(l2_loss_weight)
-        output = data_loss + l2_loss
-    
-    else:
-        output = data_loss
-    
-    if (isinstance(optimizer, torch.optim.LBFGS)):
-        def closure():
-            optimizer.zero_grad()
-            output.backward(retain_graph=True)
-            return output
-     
-        optimizer.step(closure)
-    else:
-        # Reset gradient
-        optimizer.zero_grad()
-        # Backward
-        output.backward()
-        # Update parameters
-        optimizer.step()
-
-    # return the cost
-    return output.data[0]
 
 
 def test_model(model, df_testing, train_config, features_to_skip = None):

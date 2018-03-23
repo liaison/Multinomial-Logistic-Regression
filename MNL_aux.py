@@ -123,7 +123,7 @@ def train_one_epoch(epoch_index, module_tuple, df_session_groups, train_config):
             print('No. alternatives:', len(df_session))
     
     
-        cost = train(model, loss, optimizer,
+        cost = model.train(loss, optimizer,
                      df_session[MNL_features].values,
                      df_session['choice'].values,
                      l1_loss_weight = l1_loss_weight,  # when zeor, no regularization
