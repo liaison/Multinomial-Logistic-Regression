@@ -1,7 +1,9 @@
 import torch
 
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
 from torch.autograd import Variable
-from torch import optim
 
 '''
 
@@ -322,68 +324,3 @@ def test_model(model, df_testing, train_config, features_to_skip = None):
     return pd.concat(ret, axis=0)
 
 
-class MaxLogLikelihoodLoss(torch.autograd.Function):
-    '''
-       the negative of the log likelihood of the chosen alternative. 
-       Note: this loss function ignores the loss of non-chosen alternatives,
-         unlike the BinaryCrossEntropy loss which takes all losses into account.
-    
-       But while we maximize the log probability of the chosen alternative, 
-         we are also minimizing the log probability of the non-chosen ones,
-         since we do a softmax over the alternatives within a session.
-    '''
-    def forward(self, input, target):
-        # return the negative of the log likelihood of the chosen alternative
-        likelihood = torch.dot(torch.t(input).view(-1), target.view(-1))
-        # average over the number of samples
-        n_samples = target.size()[0]
-        return torch.neg(torch.log(likelihood) / n_samples)
-
-
-def init_model(train_config):
-    '''
-        build and initialize the MNL model
-    '''
-    # use the full float type, float64
-    torch.set_default_tensor_type('torch.DoubleTensor')
-    
-    MNL_features = train_config['MNL_features']
-    optimizer_method = train_config['optimizer']
-    learning_rate = train_config['learning_rate']
-    momentum = train_config['momentum']
-    weight_decay = train_config.get('weight_decay', 0)
-    loss_func = train_config.get('loss', 'BinaryCrossEntropy')
-    
-    #model = build_model(n_features)
-    model = MNL(MNL_features)
-    
-    # binary cross entropy
-    if (loss_func == 'BinaryCrossEntropy'):
-        # doc: http://pytorch.org/docs/master/nn.html
-        # loss(o,t)=−1/n∑i(t[i]∗log(o[i])+(1−t[i])∗log(1−o[i]))
-        loss = torch.nn.BCELoss()
-    elif (loss_func == 'MaxLogLikelihood'):
-        loss = MaxLogLikelihoodLoss()
-
-    #loss = torch.nn.CrossEntropyLoss(size_average=True)
-    
-    if (optimizer_method == 'SGD'):
-        # e.g. lr = 0.01/ 1e-2
-        optimizer = optim.SGD(model.parameters(), lr=learning_rate, weight_decay=weight_decay, momentum=momentum)
-    
-    elif (optimizer_method == 'Adam'):
-        # weight_decay:  add L2 regularization to the weights ? 
-        # It seems that with MNL any regularization would deteriarate the performance.
-        # The Adam optimizer seems to converge faster than SGD
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    
-    elif (optimizer_method == 'Adagrad'):
-        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate, weight_decay=weight_decay)
-    
-    elif (optimizer_method == 'RMSprop'):
-        optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
-    
-    elif (optimizer_method == 'LBFGS'):
-        optimizer = torch.optim.LBFGS(model.parameters(), lr=learning_rate)
-    
-    return (model, loss, optimizer)
