@@ -20,4 +20,9 @@ One can inspire from the `demo` notebook on the usage of API. In general, one on
 
 As to the input data format, any data source that could be transformed into Python dataframe will do. There is only one requirement on the content of the data, *i.e.* each data record should contain a `session_id` attribute that group the records/options into a particular choice session, and a binary `choice` attribute that indicates whether the option is chosen (value `1`) or not (value `0`).
 
+| session_id |  choice |  feature_1 | feature_2 | feature_n|
+| -----------| --------| -----------| ----------| ---------|
+|   10001    |    0    |   0.331    | 0.587     |  ...     |
+|   10001    |    0    |   0.983    | 0.223     |  ...     |
+|   10001    |    1    |   0.732    | 0.945     |  ...     |
 
