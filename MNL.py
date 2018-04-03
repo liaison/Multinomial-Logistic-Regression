@@ -185,7 +185,7 @@ class MNL(nn.Module):
             Return the Variable of the MNL parameters,
               which can be updated manually.
         '''
-        for name, param in model.named_parameters():
+        for name, param in self.named_parameters():
             if param.requires_grad and name == 'linear.weight':
                 return param
         return None

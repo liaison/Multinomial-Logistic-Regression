@@ -305,6 +305,7 @@ def test_model(model, df_testing, train_config, features_to_skip = None):
         ret.append(df_session)
         
     # concatenate the dataframes along the rows
+    import pandas as pd
     return pd.concat(ret, axis=0)
 
 
