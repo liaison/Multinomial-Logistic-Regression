@@ -26,6 +26,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ###################################################################################
 '''
 from MNL import *
+import pandas as pd
+import numpy as np
 
 
 class MaxLogLikelihoodLoss(torch.autograd.Function):
@@ -307,6 +309,135 @@ def test_model(model, df_testing, train_config, features_to_skip = None):
     # concatenate the dataframes along the rows
     import pandas as pd
     return pd.concat(ret, axis=0)
+
+
+def rank(pred_values, real_choice):
+    '''
+        Get the rank of chosen alternative within the predicted values
+    '''
+    # first, rank all the values
+    rank = pd.DataFrame(pred_values).rank(axis=0, ascending=False)
+
+    # filter out the rank of the chosen alternative, by dot product
+    return rank[0].dot(real_choice)
+
+
+def get_chosen_pred_value(pred_values, real_choice):
+    return pd.Series(pred_values.reshape(-1)).dot(real_choice)
+
+
+def validate(model, df_testing, train_config, features_to_skip = None):
+    '''
+        Test the model with the given data
+        train_config: some parameters are used, i.e. MNL_feature, gpu
+        features_to_skip:  a list of features to skip in the validation
+        return: the statistic results of testing
+    '''
+    df_session_groups = df_testing.groupby('session_id')
+
+    if (train_config['verbose']):
+        print('Num of testing sessions:', len(df_session_groups))
+
+    MNL_features = train_config['MNL_features']
+    if (len(MNL_features) == 0):
+        MNL_features = get_default_MNL_features(df_testing)
+    
+    session_size = []
+    session_rank = []
+    session_pred_value = []
+    # the maximum probability that is assigned to an alternative within a session.
+    session_max_prob = []
+    
+    for session_id in list(df_session_groups.groups.keys()):
+    
+        df_session = df_session_groups.get_group(session_id)
+    
+        if (features_to_skip == None):
+            testing_data = df_session[MNL_features]
+        else:
+            # Set the values of feature-to-skip to be zero, 
+            #   i.e. nullify the weights associated with the features to skip
+            testing_data = df_session[MNL_features].copy()
+            testing_data[features_to_skip] = 0
+        
+        predY = model.predict(testing_data.values, binary=False)
+    
+        #print('SessionId:', session_id)
+        #print('AlterId:', df_session['alter_id'].values)
+        #print('Real Y-value:', df_session['choice'].values)
+        #print('Prediction:', predY)
+
+        choice_value = df_session['choice'].values
+    
+        session_size.append(len(df_session))
+        session_pred_value.append(get_chosen_pred_value(predY, choice_value))
+        session_rank.append(rank(predY, choice_value))
+        session_max_prob.append(predY.max())
+    
+    df_session_KPIs = pd.DataFrame()
+    df_session_KPIs['session_id'] = list(df_session_groups.groups.keys())
+    df_session_KPIs['session_size'] = session_size
+    df_session_KPIs['rank_of_chosen_one'] = session_rank
+    df_session_KPIs['prob_of_chosen_one'] = session_pred_value
+    df_session_KPIs['max_prob'] = session_max_prob
+    
+    return df_session_KPIs
+
+
+def summarize_KPIs(df_session_KPIs, n_features):
+
+    from scipy import stats
+
+    KPI_summary = {}
+    
+    #stats.percentileofscore([1, 2, 3, 3, 4], 3, kind='weak')
+    # expected 80.0
+    KPI_summary['session_num'] = len(df_session_KPIs)
+    KPI_summary['mean_session_size'] = df_session_KPIs['session_size'].mean()
+
+    # calculate the percentile, LESS THAN and EQUAL to the given score
+    KPI_summary['top_1_rank_quantile'] = \
+          stats.percentileofscore(df_session_KPIs['rank_of_chosen_one'], 1, kind='weak')
+
+    KPI_summary['top_5_rank_quantile'] = \
+          stats.percentileofscore(df_session_KPIs['rank_of_chosen_one'], 5, kind='weak')
+
+    KPI_summary['top_10_rank_quantile'] = \
+          stats.percentileofscore(df_session_KPIs['rank_of_chosen_one'], 10, kind='weak')
+        
+    # The ratio between the rank of the chosen alternative and the number of alternatives
+    rank_ratio = (df_session_KPIs['rank_of_chosen_one'] / df_session_KPIs['session_size'])
+    KPI_summary['mean_rank_ratio'] = rank_ratio.mean()
+    KPI_summary['median_rank_ratio'] = rank_ratio.median()
+    
+    KPI_summary['mean_rank'] = df_session_KPIs['rank_of_chosen_one'].mean()
+    KPI_summary['median_rank'] = df_session_KPIs['rank_of_chosen_one'].median()
+    
+    KPI_summary['mean_probability'] = df_session_KPIs['prob_of_chosen_one'].mean()
+    KPI_summary['median_probability'] = df_session_KPIs['prob_of_chosen_one'].median()
+
+    # the difference of probability values between the chosen one and the predicted one
+    prob_diff = (df_session_KPIs['prob_of_chosen_one'] - df_session_KPIs['max_prob'])
+    KPI_summary['mean_probability_diff'] = prob_diff.mean()
+    KPI_summary['median_probability_diff'] = prob_diff.median()
+    
+    # the log likelihood for each chosen alternative is negative. The higher the probability, 
+    #  the closer the log likelihood is to the zero, (i.e. the lower the absolute value)
+    KPI_summary['log_likelihood'] = np.log(df_session_KPIs['prob_of_chosen_one']).sum()
+    
+    KPI_summary['mean_log_likelihood'] = np.log(df_session_KPIs['prob_of_chosen_one']).mean()
+    
+    # AIC <- 2*length(model$coefficients) - 2*model$loglikelihood
+    # Akaike Information Criterion, which estimates the quality of the model, (i.e. the lower, the better)
+    '''
+      AIC is founded on information theory: it offers an estimate of the relative information lost
+        when a given model is used to represent the process that generated the data.
+        (In doing so, it deals with the trade-off between the goodness of fit of the model and
+         the simplicity of the model.)
+    '''
+    KPI_summary['AIC'] = 2 * n_features - 2 * KPI_summary['log_likelihood']
+    
+    return KPI_summary
 
 
 def plot_loss(loss_list):
