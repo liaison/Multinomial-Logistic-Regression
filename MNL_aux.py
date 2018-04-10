@@ -94,6 +94,11 @@ def init_model(train_config):
         optimizer = torch.optim.RMSprop(model.parameters(), lr=learning_rate, momentum=momentum, weight_decay=weight_decay)
     
     elif (optimizer_method == 'LBFGS'):
+        # http://cs231n.github.io/neural-networks-3/#sgd
+        # TODO: Even we eliminate the memory concerns, a large downside of naive application of L-BFGS is
+        #   that it MUST be computed over the entire training set, which could contain millions of examples.
+        #   Unlike mini-batch SGD, getting L-BFGS to work on mini-batches is more tricky and an active area
+        #   of research.
         optimizer = torch.optim.LBFGS(model.parameters(), lr=learning_rate)
     
     return (model, loss, optimizer)
