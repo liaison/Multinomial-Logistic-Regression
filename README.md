@@ -11,8 +11,9 @@ A typical scenario to apply MNL model is to predict the choice of customer in a 
 
 - `MNL.py`: this python module contains the implementation of Multinomial Logistic Regression model that is implemented with Pytorch.
 
-- `MNL_aux.py`: this python module provides some auxiliary functions in complement with the `MNL.py` model, *e.g.* train the model with early stopping on the error delta threshold.
+- `MNL_plus.py`: this python module provides a number of auxiliary functions in complement with the `MNL.py` model. For instance, one can find a train function with the capabililty of early stopping on the predefined threshold of error delta.
 
+- `Mint.py`: this is a minimized model that is intended for inference only, with on dependency on the Pytorch framework. Once one obtains a model with the `MNL` module, one could *export" the trained model to `Mint` and deploy it in the running time with minimal dependencies (panda + numpy).
 
 ### Usage
 
