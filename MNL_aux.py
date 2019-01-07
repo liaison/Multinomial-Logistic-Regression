@@ -25,9 +25,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ###################################################################################
 '''
-from MNL import *
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.autograd import Variable
+
 import pandas as pd
 import numpy as np
+import math
+
+from MNL import *
 
 
 class MaxLogLikelihoodLoss(torch.autograd.Function):
@@ -45,6 +53,10 @@ class MaxLogLikelihoodLoss(torch.autograd.Function):
     def forward(self, input, target):
         # return the negative of the log likelihood of the chosen alternative
         likelihood = torch.dot(torch.t(input).view(-1), target.view(-1))
+
+        # shift the value to the zone [1, 2] to avoid the underflowing
+        likelihood = likelihood + 1
+        
         # average over the number of samples
         n_samples = target.size()[0]
         return torch.neg(torch.log(likelihood) / n_samples)
@@ -129,14 +141,20 @@ def train_one_epoch(epoch_index, module_tuple, df_session_groups, train_config):
             print('session_id:', session_id)
             print('No. alternatives:', len(df_session))
     
-    
-        cost = model.train(loss, optimizer,
+        try:
+            cost = model.train(loss, optimizer,
                      df_session[MNL_features].values,
                      df_session['choice'].values,
                      l1_loss_weight = l1_loss_weight,  # when zeor, no regularization
                      l2_loss_weight = l2_loss_weight,  # when zeor, no regularization
                      gpu=gpu)
         
+        except ValueError:
+            if (verbose >= 1):
+                print('loss underflow in session: ', session_id)
+            # skip this session
+            continue
+
         total_cost += cost
     
         # save the gradients if asked
@@ -327,8 +345,24 @@ def rank(pred_values, real_choice):
     return rank[0].dot(real_choice)
 
 
+def mean_rank(pred_values, real_choice):
+    '''
+        In a session with multiple choices,
+         get the mean rank values for the chosen choices.
+    '''
+    return rank(pred_values, real_choice) / real_choice.sum()
+
+
 def get_chosen_pred_value(pred_values, real_choice):
     return pd.Series(pred_values.reshape(-1)).dot(real_choice)
+
+
+def mean_chosen_pred_value(pred_values, real_choice):
+    '''
+        In a session with multiple choices,
+          get the mean probability value for the chosen ones.
+    '''
+    return get_chosen_pred_value(pred_values, real_choice) / real_choice.sum()
 
 
 def validate(model, df_testing, train_config, features_to_skip = None):
@@ -348,6 +382,7 @@ def validate(model, df_testing, train_config, features_to_skip = None):
         MNL_features = get_default_MNL_features(df_testing)
     
     session_size = []
+    session_num_chosen_choices = [] # the number of chosen choices
     session_rank = []
     session_pred_value = []
     # the maximum probability that is assigned to an alternative within a session.
@@ -373,15 +408,18 @@ def validate(model, df_testing, train_config, features_to_skip = None):
         #print('Prediction:', predY)
 
         choice_value = df_session['choice'].values
-    
+        session_num_chosen_choices.append(choice_value.sum())
         session_size.append(len(df_session))
-        session_pred_value.append(get_chosen_pred_value(predY, choice_value))
-        session_rank.append(rank(predY, choice_value))
+        #session_pred_value.append(get_chosen_pred_value(predY, choice_value))
+        #session_rank.append(rank(predY, choice_value))
+        session_pred_value.append(mean_chosen_pred_value(predY, choice_value))
+        session_rank.append(mean_rank(predY, choice_value))
         session_max_prob.append(predY.max())
     
     df_session_KPIs = pd.DataFrame()
     df_session_KPIs['session_id'] = list(df_session_groups.groups.keys())
     df_session_KPIs['session_size'] = session_size
+    df_session_KPIs['num_chosen_choices'] = session_num_chosen_choices
     df_session_KPIs['rank_of_chosen_one'] = session_rank
     df_session_KPIs['prob_of_chosen_one'] = session_pred_value
     df_session_KPIs['max_prob'] = session_max_prob

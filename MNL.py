@@ -5,6 +5,13 @@ import torch.nn.functional as F
 import torch.optim as optim
 from torch.autograd import Variable
 
+import math
+# serialization and deserialization of model
+import pickle
+
+import numpy as np
+import pandas as pd
+
 '''
 
 ###################################################################################
@@ -130,6 +137,11 @@ class MNL(nn.Module):
         else:
             output = data_loss
 
+        # Underflow in the loss calculation
+        if math.isnan(output.data[0]):
+            raise ValueError('NaN detected')
+            #return output.data[0]
+
         if (isinstance(optimizer, torch.optim.LBFGS)):
             def closure():
                 optimizer.zero_grad()
@@ -152,10 +164,15 @@ class MNL(nn.Module):
     def predict(self, x_val, binary=False):
         '''
             Give prediction for alternatives within a single session
+            x_val: DataFrame, or np.ndarray
+            return: numpy
         '''
         is_gpu = self.get_params()[0].is_cuda
 
-        tensorX = torch.from_numpy(x_val).double()
+        if isinstance(x_val, pd.DataFrame):
+            tensorX = torch.from_numpy(x_val.values).double()
+        else:
+            tensorX = torch.from_numpy(x_val).double()
     
         if (is_gpu):
             x = Variable(tensorX.type(torch.cuda.DoubleTensor), requires_grad=False)
@@ -172,7 +189,7 @@ class MNL(nn.Module):
         
         if (binary):
             # convert the softmax values to binary values
-            max_indice = prob.argmax(axis=1)
+            max_indice = prob.argmax(axis=0)
             ret = np.zeros(len(prob))
             ret[max_indice] = 1
             return ret
@@ -258,7 +275,38 @@ class MNL(nn.Module):
             pass
         
         return is_found
-    
+
+
+    def save(self, file_name):
+        '''
+            Serialize the model object into a file
+        '''
+        with open(file_name, mode='wb') as model_file:
+            pickle.dump(self, model_file)
+            print('save model to ', file_name)
+
+
+    def set_train_config(self, train_config):
+        '''
+            Set the training configs along with the model,
+             so that it can be serialized together with the model.
+        '''
+        self.train_config = train_config
+
+
+    def get_train_config(self):
+        return self.train_config
+
+
+def load_model(file_name):
+    '''
+        Load a model from a pickled file
+    '''
+    with open(file_name, mode='rb') as model_file:
+        model = pickle.load(model_file)
+        print('load model from ', file_name)
+        return model
+
 
 def build_model(input_dim):
     '''
