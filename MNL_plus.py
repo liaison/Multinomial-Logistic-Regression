@@ -38,6 +38,18 @@ import math
 from MNL import *
 
 
+'''
+This module provides a number of auxiliary functions, in addition to the MNL model.
+
+- One can find another loss function called MaxLogLikelihoodLoss. 
+
+- There is a training function with early stopping capability.
+
+- There are some functions to calculate the KPIs for model benchmarking.
+
+'''
+
+
 class MaxLogLikelihoodLoss(torch.autograd.Function):
     '''
        the negative of the log likelihood of the chosen alternative. 

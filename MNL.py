@@ -298,13 +298,19 @@ class MNL(nn.Module):
         return self.train_config
 
 
-def load_model(file_name):
-    '''
-        Load a model from a pickled file
-    '''
-    with open(file_name, mode='rb') as model_file:
-        model = pickle.load(model_file)
-        print('load model from ', file_name)
+def load_model(pickle_file):
+    """
+        Instantialize a model from its pickle file.
+    """
+    with open(pickle_file, 'rb') as inp:
+        try:
+            # python 3
+            model = pickle.load(inp, encoding='bytes')
+        except:
+            # python 2
+            model = pickle.load(inp)
+
+        print('load model from ', pickle_file)
         return model
 
 

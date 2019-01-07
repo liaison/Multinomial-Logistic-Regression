@@ -15,6 +15,7 @@ A typical scenario to apply MNL model is to predict the choice of customer in a 
 
 - `Mint.py`: this is a minimized model that is intended for inference only, with on dependency on the Pytorch framework. Once one obtains a model with the `MNL` module, one could *export" the trained model to `Mint` and deploy it in the running time with minimal dependencies (panda + numpy).
 
+
 ### Usage
 
 One can inspire from the `demo` notebook on the usage of API. In general, one only needs to provides a `dict` of parameters for the training, *e.g.* loss function, optimizer, regularization *etc*.
